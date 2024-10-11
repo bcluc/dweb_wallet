@@ -1,7 +1,15 @@
 import 'package:dweb_wallet/metamask.dart';
+import 'package:dweb_wallet/wallet_connect_credential.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart';
+import 'package:walletconnect_flutter_v2/walletconnect_flutter_v2.dart';
+
+const _contractAddress = '0x39f13B61cEF5939A30D1ac89E1bF441a62371E7C';
+const _sepRpcUrl =
+    'https://sepolia.infura.io/v3/2682fb5ba7214f63ad1b4b90c9169b38';
 
 void main() {
   runApp(const MyApp());
@@ -28,6 +36,33 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  static const String walletAbi = 'assets/abi/abi_wallet.json';
+  late ContractEvent contractEvent;
+  late String walletAddress;
+  late Web3Client ethClient;
+  late Client httpClient;
+  late DeployedContract _contract;
+
+  Future<DeployedContract> loadContract() async {
+    String abi = await rootBundle.loadString(walletAbi);
+    final contract = DeployedContract(ContractAbi.fromJson(abi, "PKWallet"),
+        EthereumAddress.fromHex(_contractAddress));
+    // PROCESS TO LISTENING TRANSFER EVENT
+    setState(() {
+      _contract = contract;
+    });
+    contractEvent = contract.event("transfer");
+    return contract;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    httpClient = Client();
+
+    ethClient = Web3Client(_sepRpcUrl, httpClient);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -41,15 +76,20 @@ class _MyHomePageState extends State<MyHomePage> {
               Center(
                 child: Consumer<MetaMaskProvider>(
                   builder: (context, provider, child) {
-                    late final String text; //check the state and display it
+                    late String text; //check the state and display it
 
-                    if (provider.isConnected && provider.isInOperatingChain) {
-                      text = 'Connected'; //connected
-                    } else if (provider.isConnected &&
-                        !provider.isInOperatingChain) {
-                      text =
-                          'Wrong chain. Please connect to ${MetaMaskProvider.operatingChain}'; //wrong chain, what chain it should be connected to
-                    } else if (provider.isEnabled) {
+                    if (provider.isConnected) {
+                      text = provider.currentAddress; //connected
+                      setState(() {
+                        walletAddress = provider.currentAddress;
+                      });
+                    }
+                    // else if (provider.isConnected &&
+                    //     !provider.isInOperatingChain) {
+                    //   text =
+                    //       'Wrong chain. Please connect to ${MetaMaskProvider.operatingChain}'; //wrong chain, what chain it should be connected to
+                    // }
+                    else if (provider.isEnabled) {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -78,16 +118,25 @@ class _MyHomePageState extends State<MyHomePage> {
                           'Please use a Web3 supported browser.'; //please use web3 supported browser
                     }
 
-                    return ShaderMask(
-                      // a little bit of styling for text
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Colors.purple, Colors.blue, Colors.red],
-                      ).createShader(bounds),
-                      child: Text(
-                        text,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headline5,
-                      ),
+                    return Column(
+                      children: [
+                        ShaderMask(
+                          // a little bit of styling for text
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Colors.purple, Colors.blue, Colors.red],
+                          ).createShader(bounds),
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineLarge,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 10,
+                        ),
+                        TextButton(
+                            onPressed: () {}, child: const Text('Transfer'))
+                      ],
                     );
                   },
                 ),
@@ -107,4 +156,62 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
   }
+
+  // void transferEth() async {
+  //   final contract = await loadContract();
+
+  //   Credentials credentials = WalletConnectCredential(
+  //       signingEngine: _w3mService.web3App!.signEngine,
+  //       sessionTopic: _w3mService.session!.topic!,
+  //       chainId: _w3mService.selectedChain!.namespace,
+  //       credentialsAddress:
+  //           EthereumAddress.fromHex(_w3mService.session!.address!));
+  //   if (walletAddress != '') {
+  //     final etherAmount = await convertUsdToEth(amount);
+  //     final ethFunction = contract.function("sendViaTransfer");
+  //     final transaction = Transaction.callContract(
+  //       contract: contract,
+  //       function: ethFunction,
+  //       parameters: [EthereumAddress.fromHex(_endPointWallet)],
+  //       value: etherAmount,
+  //     );
+  //     // print('Check credentials ${credentials}');
+  //     // print('Check transaction ${transaction.toJson()}');
+  //     _w3mService.launchConnectedWallet();
+  //     setState(() {
+  //       isLoading = true;
+  //       transactionConfirmed = false;
+  //     });
+  //     final response = await ethClient.sendTransaction(
+  //       credentials,
+  //       transaction,
+  //       chainId: int.tryParse(_w3mService.session!.chainId),
+  //     );
+
+  //     //print('Sent successfull');
+  //     //print(response);
+  //     // TESTING
+  //     // _w3mService.addListener(() {
+  //     //   response;
+  //     // });
+  //     // _w3mService.notifyListeners();
+  //     // TESTING
+  //     if (!response.isEmpty) {
+  //       await _waitForConfirmation(response);
+  //     }
+  //     setState(() {
+  //       isLoading = false;
+  //     });
+  //   } else {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text(
+  //           'Please connect your wallet',
+  //           textAlign: TextAlign.center,
+  //         ),
+  //       ),
+  //     );
+  //   }
+  //   return;
+  // }
 }
